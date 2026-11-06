@@ -83,6 +83,12 @@ table.g td.pn small{font-size:8.5px;white-space:normal}
   table.g{min-width:0}
   @page{size:A4 landscape;margin:10mm}
 }
+.ck{flex-direction:row;align-items:center;gap:8px;font-weight:500;padding:6px 8px;border-bottom:1px dotted var(--line)}
+.ck input{width:18px;height:18px}
+#absList{max-height:240px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;margin:8px 0}
+.chip{display:inline-flex;gap:6px;align-items:center;background:color-mix(in srgb,var(--bad) 14%,var(--card));border:1px solid var(--bad);border-radius:99px;padding:2px 4px 2px 10px;font-size:12.5px;margin:2px}
+.chip button{background:transparent;color:var(--bad);border:0;padding:0 6px;font-size:14px}
+.lockb{border-color:var(--ok);color:var(--ok);font-weight:700}
 .pr{display:none}
 @media print{.pr{display:block}.scr{display:none!important}}
 .pr h2{margin:0 0 2px;font-size:16px;text-align:center}
@@ -105,6 +111,24 @@ table.g td.pn small{font-size:8.5px;white-space:normal}
     <p class="meta" style="margin:6px 0 0" id="srcNote">শিক্ষক তালিকা লোড হচ্ছে… / Loading teacher list…</p>
   </div>
 
+  <div class="card lockb noprint" id="lockB" hidden>🔒 জমা/শেয়ার হয়ে গেছে — আর কেউ সম্পাদনা করতে পারবে না / Submitted & shared — locked, no one can edit now. (Print / Download still work.)</div>
+
+  <div class="card noprint" id="absCard">
+    <b>ধাপ ১ / Step 1 — অনুপস্থিত / ছুটিতে থাকা শিক্ষক (সর্বোচ্চ ১০ জন) / Absent or on-leave teachers (max 10)</b>
+    <div id="absEdit">
+      <p class="meta" style="margin:4px 0">এঁদের রুটিনে বসানো যাবে না / These teachers will not be available in the routine.</p>
+      <input id="absQ" placeholder="🔎 শিক্ষক খুঁজুন / Search teacher" autocomplete="off" style="width:100%">
+      <div id="absList"></div>
+    </div>
+    <div id="absChips"></div>
+    <div class="row" style="margin-top:6px">
+      <button id="absOk" type="button">✔ নিশ্চিত করে রুটিন শুরু করুন / Confirm &amp; start routine</button>
+      <button class="alt" id="absChg" type="button" hidden>✎ তালিকা বদলান / Change absent list</button>
+      <span class="meta" id="absCnt"></span>
+    </div>
+  </div>
+
+  <div id="rtWrap" hidden>
   <div class="card noprint"><div class="tabs" id="tabs" role="tablist"></div></div>
 
   <div class="card noprint scr">
@@ -132,6 +156,7 @@ table.g td.pn small{font-size:8.5px;white-space:normal}
       <span class="meta" id="saved"></span>
     </div>
     <p class="warn" id="warn" style="margin:6px 0 0"></p>
+  </div>
   </div>
   <div id="printArea" class="pr"></div>
 </main>
@@ -166,6 +191,8 @@ const SUBJ=["Bengali","English","Mathematics","Physical Science","Life Science",
 const KEY="tfhs_prov_routine_v1";
 let S={ahm:"",des:"Assistant Head Master",ses:"2027",rem:"",data:{}}; /* data[class][day][period]={t,s} */
 try{const q=JSON.parse(localStorage.getItem(KEY)||"null");if(q)S=Object.assign(S,q)}catch(e){}
+S.absent=Array.isArray(S.absent)?S.absent:[];S.step=S.step||"absent";S.locked=!!S.locked;
+const isAbs=n=>S.absent.includes(n),avail=()=>TEACH.filter(t=>!isAbs(t[0])),MAXABS=10;
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S));$("saved").textContent="✔ ডিভাইসে সংরক্ষিত / saved on this device "+new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}catch(e){}};
 const cell=(c,d,p)=>((S.data[c]||{})[d]||{})[p]||{t:"",s:""};
 function setCell(c,d,p,v){S.data[c]=S.data[c]||{};S.data[c][d]=S.data[c][d]||{};S.data[c][d][p]=v}
@@ -195,17 +222,17 @@ let PK=null;
 function busyMap(c,p){const m={};CLASSES.forEach(x=>{if(x!==c){const t=cell(x,day,p).t;if(t)m[t]=x}});return m}
 function pkDraw(){
   const q=$("pkQ").value.trim().toLowerCase(),bm=busyMap(PK.c,PK.p);
-  const L=TEACH.filter(t=>!q||(t[0]+" "+t[1]).toLowerCase().includes(q));
+  const L=avail().filter(t=>!q||(t[0]+" "+t[1]).toLowerCase().includes(q));
   $("pkL").innerHTML=L.map(t=>`<button type="button" data-t="${esc(t[0])}" class="${t[0]===PK.t?"sel":""} ${bm[t[0]]?"busy":""}"><span>${esc(t[0])}${t[1]?` <small>(${esc(t[1])})</small>`:""}</span><small>${bm[t[0]]?"⚠ "+bm[t[0]]:""}</small></button>`).join("")||'<div class="meta" style="padding:10px">কোনো শিক্ষক নেই / none</div>';
   $("pkL").querySelectorAll("button").forEach(b=>b.onclick=()=>{PK.t=b.dataset.t;const f=TEACH.find(x=>x[0]===PK.t);if(!PK.touched&&f&&f[1]&&!/all subjects|\/|&/i.test(f[1]))$("pkS").value=f[1];pkDraw()});
 }
-function openPk(c,p){const v=cell(c,day,p);PK={c,p,t:v.t,touched:!!v.s};$("pkT").textContent=c+" · "+DAYSEN[day]+" · P"+(p+1);$("pkQ").value="";$("pkS").value=v.s||"";$("pk").classList.add("show");pkDraw()}
+function openPk(c,p){if(S.locked)return toast("🔒 লক / Locked");const v=cell(c,day,p);PK={c,p,t:v.t,touched:!!v.s};$("pkT").textContent=c+" · "+DAYSEN[day]+" · P"+(p+1);$("pkQ").value="";$("pkS").value=v.s||"";$("pk").classList.add("show");pkDraw()}
 $("pkS").oninput=()=>{PK.touched=true};
 $("pkQ").oninput=pkDraw;
 const pkClose=()=>$("pk").classList.remove("show");
 $("pkX").onclick=pkClose;$("pk").onclick=e=>{if(e.target===$("pk"))pkClose()};
-$("pkOk").onclick=()=>{setCell(PK.c,day,PK.p,{t:PK.t||"",s:PK.t?$("pkS").value.trim():""});save();pkClose();drawAll()};
-$("pkClr").onclick=()=>{setCell(PK.c,day,PK.p,{t:"",s:""});save();pkClose();drawAll()};
+$("pkOk").onclick=()=>{if(S.locked)return pkClose();setCell(PK.c,day,PK.p,{t:PK.t||"",s:PK.t?$("pkS").value.trim():""});save();pkClose();drawAll()};
+$("pkClr").onclick=()=>{if(S.locked)return pkClose();setCell(PK.c,day,PK.p,{t:"",s:""});save();pkClose();drawAll()};
 const dayCount=d=>{let f=0,t=0;CLASSES.forEach(c=>{t+=np(d);for(let p=0;p<np(d);p++)if(cell(c,d,p).t)f++});return{f,tot:t}};
 function drawTabs(){
   const cl=clashes();
@@ -215,7 +242,7 @@ function drawTabs(){
 }
 function drawGrid(){
   const cl=clashes();$("clsTitle").textContent="দিন / Day: "+DAYS[day]+" — সব শ্রেণি / all classes";
-  const opts=(sel)=>`<option value="">—</option>`+TEACH.map(t=>`<option value="${esc(t[0])}"${t[0]===sel?" selected":""}>${esc(t[0])}${t[1]?" ("+esc(t[1])+")":""}</option>`).join("")+(sel&&!TEACH.some(t=>t[0]===sel)?`<option selected>${esc(sel)}</option>`:"");
+  const opts=(sel)=>`<option value="">—</option>`+avail().map(t=>`<option value="${esc(t[0])}"${t[0]===sel?" selected":""}>${esc(t[0])}${t[1]?" ("+esc(t[1])+")":""}</option>`).join("")+(sel&&!TEACH.some(t=>t[0]===sel)?`<option selected>${esc(sel)}</option>`:"");
   let h=`<tr><th>পিরিয়ড</th>${CLASSES.map(c=>`<th>${c}</th>`).join("")}</tr>`;
   for(let p=0;p<np(day);p++){
     if(p===4)h+=`<tr><td class="pn">🍛<small>১:৩০–২:১০</small></td><td class="brk" colspan="${CLASSES.length}">টিফিন / মিড-ডে মিল বিরতি · Tiffin / MDM break</td></tr>`;
@@ -239,28 +266,59 @@ function drawWarn(){
   const cl=clashes(),n=Object.keys(cl).length;let un=0;CLASSES.forEach(c=>{const x=counts(c);un+=x.tot-x.f});
   $("warn").textContent=(n?`⚠ ${n} ক্ল্যাশ: একই শিক্ষক একই সময়ে একাধিক ক্লাসে / ${n} clash cell(s): same teacher in two classes at the same time. `:"")+(un?`ফাঁকা ঘর / Empty cells: ${un}`:"");
 }
-function drawAll(){drawTabs();drawGrid();drawLoad();drawWarn()}
+function drawAbsList(){
+  const q=$("absQ").value.trim().toLowerCase();
+  $("absList").innerHTML=TEACH.filter(t=>!q||(t[0]+" "+t[1]).toLowerCase().includes(q)).map(t=>`<label class="ck"><input type="checkbox" data-t="${esc(t[0])}"${isAbs(t[0])?" checked":""}><span>${esc(t[0])}${t[1]?` <small>(${esc(t[1])})</small>`:""}</span></label>`).join("");
+  $("absList").querySelectorAll("input").forEach(i=>i.onchange=()=>{
+    const n=i.dataset.t;
+    if(i.checked){if(S.absent.length>=MAXABS){i.checked=false;return toast("সর্বোচ্চ ১০ জন / Maximum 10 teachers")}S.absent.push(n)}
+    else S.absent=S.absent.filter(x=>x!==n);
+    save();drawAbsInfo()});
+}
+function drawAbsInfo(){
+  const ed=S.step==="absent"&&!S.locked;
+  $("absCnt").textContent=ed?`নির্বাচিত / Selected: ${S.absent.length} / ${MAXABS}`:"";
+  $("absChips").innerHTML=S.absent.length?`<div class="meta" style="margin-top:6px">অনুপস্থিত / Absent (${S.absent.length}):</div>`+S.absent.map(n=>`<span class="chip">${esc(n)}${ed?`<button type="button" data-t="${esc(n)}" aria-label="remove">✕</button>`:""}</span>`).join(""):(ed?"":'<span class="meta">কেউ নেই / None</span>');
+  $("absChips").querySelectorAll("button").forEach(b=>b.onclick=()=>{S.absent=S.absent.filter(x=>x!==b.dataset.t);save();drawAbsInfo();drawAbsList()});
+}
+function applyState(){
+  const ed=S.step==="absent"&&!S.locked;
+  $("absEdit").hidden=!ed;$("absOk").hidden=!ed;$("absChg").hidden=ed||S.locked;
+  $("rtWrap").hidden=S.step!=="routine";$("lockB").hidden=!S.locked;
+  ["ahm","des","ses","rem","cpAll","clrCls","submit"].forEach(k=>$(k).disabled=S.locked);
+}
+$("absQ").oninput=drawAbsList;
+$("absOk").onclick=()=>{
+  let hit=0;CLASSES.forEach(c=>{for(let d=0;d<6;d++)for(let p=0;p<np(d);p++)if(isAbs(cell(c,d,p).t))hit++});
+  if(!S.absent.length&&!confirm("কোনো অনুপস্থিত শিক্ষক বাছা হয়নি। এগিয়ে যাবেন? / No absent teacher selected. Continue?"))return;
+  if(hit&&!confirm(hit+" ঘরে অনুপস্থিত শিক্ষক বসানো আছে, সেগুলো মুছে যাবে। / "+hit+" cell(s) have absent teachers; they will be cleared. Continue?"))return;
+  CLASSES.forEach(c=>{for(let d=0;d<6;d++)for(let p=0;p<np(d);p++)if(isAbs(cell(c,d,p).t))setCell(c,d,p,{t:"",s:""})});
+  S.step="routine";save();drawAll();window.scrollTo(0,0)};
+$("absChg").onclick=()=>{if(S.locked)return;S.step="absent";save();drawAll()};
+const lockNow=()=>{S.locked=true;S.lockedAt=new Date().toISOString();save();drawAll()};
+function drawAll(){drawAbsList();drawAbsInfo();applyState();drawTabs();drawGrid();drawLoad();drawWarn()}
 ["ahm","des","ses","rem"].forEach(k=>{$(k).value=S[k]||"";$(k).oninput=()=>{S[k]=$(k).value;save()}});
 const dl=document.createElement("datalist");dl.id="sj";dl.innerHTML=SUBJ.map(x=>`<option value="${x}">`).join("");document.body.appendChild(dl);
 
-$("cpAll").onclick=()=>{if(!confirm("Copy "+DAYSEN[day]+" to all other days? (replaces them)"))return;for(let d=0;d<6;d++){if(d===day)continue;CLASSES.forEach(c=>{for(let p=0;p<np(d);p++){const o=cell(c,day,p);setCell(c,d,p,{t:o.t,s:o.s})}})}save();drawAll();toast("সব দিনে কপি হয়েছে / Copied to all days")};
-$("clrCls").onclick=()=>{if(confirm("Clear all classes for "+DAYSEN[day]+"?")){CLASSES.forEach(c=>{S.data[c]=S.data[c]||{};S.data[c][day]={}});save();drawAll()}};
+$("cpAll").onclick=()=>{if(S.locked)return;if(!confirm("Copy "+DAYSEN[day]+" to all other days? (replaces them)"))return;for(let d=0;d<6;d++){if(d===day)continue;CLASSES.forEach(c=>{for(let p=0;p<np(d);p++){const o=cell(c,day,p);setCell(c,d,p,{t:o.t,s:o.s})}})}save();drawAll();toast("সব দিনে কপি হয়েছে / Copied to all days")};
+$("clrCls").onclick=()=>{if(!S.locked&&confirm("Clear all classes for "+DAYSEN[day]+"?")){CLASSES.forEach(c=>{S.data[c]=S.data[c]||{};S.data[c][day]={}});save();drawAll()}};
 
 /* ---- output ---- */
-function payload(){return{ahm:S.ahm.trim(),designation:S.des.trim(),session:S.ses.trim(),remark:S.rem.trim(),classes:CLASSES,data:S.data,clashes:Object.keys(clashes()).length,filled:CLASSES.reduce((a,c)=>a+counts(c).f,0),total:CLASSES.reduce((a,c)=>a+counts(c).tot,0)}}
+function payload(){return{absent:S.absent.slice(),ahm:S.ahm.trim(),designation:S.des.trim(),session:S.ses.trim(),remark:S.rem.trim(),classes:CLASSES,data:S.data,clashes:Object.keys(clashes()).length,filled:CLASSES.reduce((a,c)=>a+counts(c).f,0),total:CLASSES.reduce((a,c)=>a+counts(c).tot,0)}}
 $("submit").onclick=async()=>{
+  if(S.locked)return;
   const p=payload();if(!p.ahm)return toast("নাম লিখুন / Enter your name first"),$("ahm").focus();
   if(!p.filled)return toast("কিছুই পূরণ করা হয়নি / Nothing filled yet");
-  let m="Submit provisional routine?\n\nFilled: "+p.filled+" / "+p.total+"\nClashes: "+p.clashes;if(p.clashes||p.filled<p.total)m+="\n\n(You can still submit; the Head Master will see the same warnings.)";
+  let m="Submit provisional routine? জমা দিলে আর সম্পাদনা করা যাবে না। / After submitting, NO ONE can edit.\n\nAbsent teachers: "+p.absent.length+"\nFilled: "+p.filled+" / "+p.total+"\nClashes: "+p.clashes;if(p.clashes||p.filled<p.total)m+="\n\n(You can still submit; the Head Master will see the same warnings.)";
   if(!confirm(m))return;
   $("submit").disabled=true;
-  try{await db.collection("provRoutine").add(Object.assign({},p,{status:"submitted",ts:firebase.firestore.FieldValue.serverTimestamp()}));toast("✔ জমা হয়েছে / Submitted to Head Master")}
+  try{await db.collection("provRoutine").add(Object.assign({},p,{status:"submitted",ts:firebase.firestore.FieldValue.serverTimestamp()}));toast("✔ জমা হয়েছে, এখন লক / Submitted — now locked");lockNow()}
   catch(e){console.error(e);toast("জমা যায়নি ("+(e.code||"error")+") — ফাইল ডাউনলোড করে পাঠান / Could not submit — download the file and send it");}
-  $("submit").disabled=false;
+  $("submit").disabled=S.locked;
 };
 function fileText(){return JSON.stringify(Object.assign({type:"tfhs-provisional-routine"},payload()))}
 $("dl").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([fileText()],{type:"application/json"}));a.download="TFHS_Provisional_Routine_"+(S.ses||"")+".json";a.click()};
-$("wa").onclick=()=>{const p=payload();const t="তালডাংরা ফুলমতি উচ্চ বিদ্যালয় — প্রভিশনাল রুটিন (শিক্ষক বিন্যাস)\nপূরণ: "+p.filled+"/"+p.total+" · ক্ল্যাশ: "+p.clashes+"\n— "+(p.ahm||"AHM");window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank")};
+$("wa").onclick=()=>{if(!S.locked){if(!confirm("শেয়ার করলে রুটিন লক হয়ে যাবে, আর কেউ সম্পাদনা করতে পারবে না। / Sharing will lock the routine; no one can edit afterwards. Continue?"))return;lockNow()}const p=payload();const t="তালডাংরা ফুলমতি উচ্চ বিদ্যালয় — প্রভিশনাল রুটিন (শিক্ষক বিন্যাস)\nপূরণ: "+p.filled+"/"+p.total+" · ক্ল্যাশ: "+p.clashes+"\n— "+(p.ahm||"AHM");window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank")};
 function printHtml(){
   let h="";
   CLASSES.forEach(c=>{
@@ -271,7 +329,7 @@ function printHtml(){
       for(let d=0;d<6;d++){if(p>=np(d)){h+=`<td class="off"></td>`;continue}const v=cell(c,d,p);h+=`<td>${esc(v.t)}${v.s?`<br><small>${esc(v.s)}</small>`:""}</td>`}
       h+="</tr>";
     }
-    h+=`</table><p class="meta">Placed by: ${esc(S.ahm)} (${esc(S.des)}) · Head Master: ____________________</p></div>`;
+    h+=`</table><p class="meta">Placed by: ${esc(S.ahm)} (${esc(S.des)}) · Head Master: ____________________${S.absent.length?`<br>Absent / on leave: ${esc(S.absent.join(", "))}`:""}</p></div>`;
   });
   return h;
 }
