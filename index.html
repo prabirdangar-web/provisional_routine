@@ -353,7 +353,7 @@ $("submit").onclick=async()=>{
   $("submit").disabled=true;
   try{const TS=firebase.firestore.FieldValue.serverTimestamp();
     if(MODE==="daily"){await db.collection("provRoutineDaily").doc(TODAY).set(Object.assign({},p,{mode:"daily",date:TODAY,day:TODAY_IDX,ts:TS}),{merge:true});S.docId=TODAY;save();drawAll();toast("✔ আজকের রুটিন জমা হয়েছে / Today's routine submitted")}
-    else if(S.docId&&ADMIN){await db.collection("provRoutine").doc(S.docId).set(Object.assign({},p,{status:"submitted",ts:TS}));toast("✔ আপডেট হয়েছে / Updated — locked");lockNow()}
+    else if(S.docId&&(ADMIN||S.reopened)){try{await db.collection("provRoutine").doc(S.docId).set(Object.assign({},p,{status:"submitted",ts:TS}))}catch(e2){if(!e2||e2.code!=="permission-denied")throw e2;const r2=await db.collection("provRoutine").add(Object.assign({},p,{status:"submitted",ts:TS}));S.docId=r2.id}S.reopened=false;toast("✔ আপডেট হয়েছে / Updated — locked");lockNow()}
     else{const r=await db.collection("provRoutine").add(Object.assign({},p,{status:"submitted",ts:TS}));S.docId=r.id;toast("✔ জমা হয়েছে, এখন লক / Submitted — now locked");lockNow()}}
   catch(e){console.error(e);toast("জমা যায়নি ("+(e.code||"error")+") — ফাইল ডাউনলোড করে পাঠান / Could not submit — download the file and send it");}
   $("submit").disabled=S.locked;
@@ -408,6 +408,15 @@ $("admDel").onclick=async()=>{
   }catch(e){return toast("Delete failed ("+(e.code||"error")+")")}
   S={ahm:S.ahm,des:S.des,ses:S.ses,rem:"",data:{},absent:[],step:MODE==="daily"?"absent":"routine",locked:false,date:TODAY};
   save();drawAll();toast("🗑 Deleted")};
+/* ---- remote unlock: when the Head Master presses Unlock on the portal (tfhs/website.regReopen), this device unlocks once so the AHM can edit and re-submit ---- */
+async function checkReopen(){
+  if(MODE==="daily"||!S.locked)return;
+  try{const s=await db.collection("tfhs").doc("website").get();if(!s.exists)return;
+    const k=s.data().regReopen;
+    if(k&&k!==S.seenReopen){S.seenReopen=k;S.locked=false;S.lockedAt=null;S.reopened=true;save();drawAll();toast("🔓 প্রধান শিক্ষক আনলক করেছেন — সম্পাদনা করে আবার জমা দিন / Unlocked by the Head Master — edit and submit again")}
+  }catch(e){}
+}
+checkReopen();document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkReopen()});
 drawAll();save();
 </script>
 </body>
