@@ -219,12 +219,17 @@ const MODE=(()=>{try{return localStorage.getItem("tfhs_prov_mode")==="daily"?"da
 const KEY=MODE==="daily"?"tfhs_prov_daily_v1":"tfhs_prov_routine_v1";
 const ADMIN_EMAIL="prabir.dangar@gmail.com";
 let ADMIN=false;
+/* WHO MAY SUBMIT: put the Gmail address of the AHM (and anyone authorised to submit on the AHM's behalf) here.
+   While this list is empty nothing is enforced. Once filled, every submit needs Google sign-in with one of these emails (or the admin's). */
+const AHM_NAME="Swapan Kumar Maji";
+const AHM_EMAILS=["swapan69maji@gmail.com"];
+const ENFORCE=AHM_EMAILS.length>0, MAYSUB=u=>!!u&&(u.email===ADMIN_EMAIL||AHM_EMAILS.includes(u.email));
 const ymd=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const TODAY=ymd(new Date()),TODAY_IDX=(new Date().getDay()+6)%7; /* Mon=0 .. Sat=5, Sun=6 */
 const DR=()=>MODE==="daily"&&TODAY_IDX<6?[TODAY_IDX]:[0,1,2,3,4,5];
 let S={ahm:"",des:"Assistant Head Master",ses:"2027",rem:"",data:{}}; /* data[class][day][period]={t,s} */
 try{const q=JSON.parse(localStorage.getItem(KEY)||"null");if(q)S=Object.assign(S,q)}catch(e){}
-S.absent=Array.isArray(S.absent)?S.absent:[];S.step=S.step||"absent";S.locked=!!S.locked;
+S.absent=Array.isArray(S.absent)?S.absent:[];S.step=S.step||"absent";S.locked=!!S.locked;if(!S.ahm)S.ahm=AHM_NAME;
 /* weekly (regular) routine is fixed for the academic year: no absentee step */
 if(MODE!=="daily"){S.absent=[];S.step="routine"}
 /* daily mode: a new day always starts clean (absentees + routine are prepared afresh each day) */
@@ -343,9 +348,13 @@ $("clrCls").onclick=()=>{if(!S.locked&&confirm("Clear all classes for "+DAYSEN[d
 
 /* ---- output ---- */
 function dataOut(){if(MODE!=="daily")return S.data;const o={};CLASSES.forEach(c=>{o[c]={[TODAY_IDX]:(S.data[c]||{})[TODAY_IDX]||{}}});return o}
-function payload(){return{absent:S.absent.slice(),ahm:S.ahm.trim(),designation:S.des.trim(),session:S.ses.trim(),remark:S.rem.trim(),classes:CLASSES,data:dataOut(),clashes:Object.keys(clashes()).length,filled:CLASSES.reduce((a,c)=>a+counts(c).f,0),total:CLASSES.reduce((a,c)=>a+counts(c).tot,0)}}
+function payload(){return{by:(auth.currentUser&&auth.currentUser.email)||"",absent:S.absent.slice(),ahm:S.ahm.trim(),designation:S.des.trim(),session:S.ses.trim(),remark:S.rem.trim(),classes:CLASSES,data:dataOut(),clashes:Object.keys(clashes()).length,filled:CLASSES.reduce((a,c)=>a+counts(c).f,0),total:CLASSES.reduce((a,c)=>a+counts(c).tot,0)}}
 $("submit").onclick=async()=>{
   if(S.locked)return;
+  if(ENFORCE){
+    if(!auth.currentUser){try{await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}catch(e){return toast("সাইন-ইন হয়নি / Sign-in failed ("+(e.code||"error")+")")}return toast("✔ সাইন-ইন হয়েছে — আবার জমা দিন / Signed in — press Submit again")}
+    if(!MAYSUB(auth.currentUser))return toast("❌ এই ইমেল জমা দিতে অনুমোদিত নয় / Not authorised to submit: "+auth.currentUser.email);
+  }
   const p=payload();if(!p.ahm)return toast("নাম লিখুন / Enter your name first"),$("ahm").focus();
   if(!p.filled)return toast("কিছুই পূরণ করা হয়নি / Nothing filled yet");
   let m="Submit provisional routine? জমা দিলে আর সম্পাদনা করা যাবে না। / After submitting, NO ONE can edit.\n\nAbsent teachers: "+p.absent.length+"\nFilled: "+p.filled+" / "+p.total+"\nClashes: "+p.clashes;if(p.clashes||p.filled<p.total)m+="\n\n(You can still submit; the Head Master will see the same warnings.)";
@@ -416,6 +425,12 @@ async function checkReopen(){
     if(k&&k!==S.seenReopen){S.seenReopen=k;S.locked=false;S.lockedAt=null;S.reopened=true;save();drawAll();toast("🔓 প্রধান শিক্ষক আনলক করেছেন — সম্পাদনা করে আবার জমা দিন / Unlocked by the Head Master — edit and submit again")}
   }catch(e){}
 }
+(async function syncToday(){
+  if(MODE!=="daily"||Object.keys(S.data||{}).length)return;
+  try{const s=await db.collection("provRoutineDaily").doc(TODAY).get();if(!s.exists)return;const d=s.data();
+    if(d.data&&Object.keys(d.data).length){S.data=d.data;S.absent=d.absent||[];S.ahm=S.ahm||d.ahm||"";S.docId=TODAY;S.step="routine";save();drawAll();toast("ℹ আজকের জমা দেওয়া রুটিন লোড হয়েছে / Today's submitted routine loaded")}
+  }catch(e){}
+})();
 checkReopen();document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkReopen()});
 drawAll();save();
 </script>
