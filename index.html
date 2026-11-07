@@ -117,8 +117,8 @@ table.g td.pn small{font-size:8.5px;white-space:normal}
   <div class="card noprint" id="modeCard">
     <div class="row">
       <b>মোড / Mode:</b>
-      <button type="button" class="alt" id="mdDaily">📅 দৈনিক রুটিন / Daily (today)</button>
-      <button type="button" class="alt" id="mdWeek">🗓 প্রভিশনাল (সাপ্তাহিক) / Provisional (weekly)</button>
+      <button type="button" class="alt" id="mdDaily">📅 প্রভিশনাল দৈনিক (অনুপস্থিত শিক্ষক) / Provisional daily (absentees)</button>
+      <button type="button" class="alt" id="mdWeek">🗓 নিয়মিত সাপ্তাহিক / Regular weekly</button>
     </div>
     <p class="meta" id="mdNote" style="margin:6px 0 0"></p>
   </div>
@@ -225,6 +225,8 @@ const DR=()=>MODE==="daily"&&TODAY_IDX<6?[TODAY_IDX]:[0,1,2,3,4,5];
 let S={ahm:"",des:"Assistant Head Master",ses:"2027",rem:"",data:{}}; /* data[class][day][period]={t,s} */
 try{const q=JSON.parse(localStorage.getItem(KEY)||"null");if(q)S=Object.assign(S,q)}catch(e){}
 S.absent=Array.isArray(S.absent)?S.absent:[];S.step=S.step||"absent";S.locked=!!S.locked;
+/* weekly (regular) routine is fixed for the academic year: no absentee step */
+if(MODE!=="daily"){S.absent=[];S.step="routine"}
 /* daily mode: a new day always starts clean (absentees + routine are prepared afresh each day) */
 if(MODE==="daily"&&S.date!==TODAY){S={ahm:S.ahm||"",des:S.des||"Assistant Head Master",ses:S.ses||"2027",rem:"",data:{},absent:[],step:"absent",locked:false,date:TODAY}}
 const isAbs=n=>S.absent.includes(n),avail=()=>TEACH.filter(t=>!isAbs(t[0])),MAXABS=10;
@@ -383,7 +385,8 @@ function drawMode(){
   const sun=MODE==="daily"&&TODAY_IDX>5;
   $("mdNote").textContent=MODE==="daily"
     ?(sun?"রবিবার — ক্লাস নেই / Sunday – no classes":"আজ / Today: "+DAYSEN[TODAY_IDX]+" "+TODAY.split("-").reverse().join("/")+" — "+(S.docId?"✔ জমা হয়েছে / submitted (আবার জমা দিলে আপডেট হবে / re-submit to update)":"এখনও জমা হয়নি / not submitted yet")+" · প্রতিদিন নতুন করে শুরু হয় / starts fresh every day")
-    :"প্রভিশনাল সাপ্তাহিক রুটিন — জমা দিলে লক হয় / weekly routine — locks on submit";
+    :"নিয়মিত সাপ্তাহিক রুটিন (সারা বছরের জন্য স্থির, অনুপস্থিতি নেই) — জমা দিলে লক হয় / regular weekly routine (fixed for the year, no absentees) — locks on submit";
+  $("absCard").style.display=MODE==="daily"?"":"none";
   if(MODE==="daily"){$("submit").textContent=S.docId?"🔄 আজকের রুটিন আপডেট করুন / Update today's routine":"📤 আজকের রুটিন জমা দিন / Submit today's routine";$("submit").disabled=S.locked||sun;$("absOk").disabled=sun}
 }
 /* ---- admin: Google sign-in, unlock / lock / delete ---- */
@@ -403,7 +406,7 @@ $("admDel").onclick=async()=>{
     if(MODE==="daily")await db.collection("provRoutineDaily").doc(TODAY).delete();
     else if(S.docId)await db.collection("provRoutine").doc(S.docId).delete();
   }catch(e){return toast("Delete failed ("+(e.code||"error")+")")}
-  S={ahm:S.ahm,des:S.des,ses:S.ses,rem:"",data:{},absent:[],step:"absent",locked:false,date:TODAY};
+  S={ahm:S.ahm,des:S.des,ses:S.ses,rem:"",data:{},absent:[],step:MODE==="daily"?"absent":"routine",locked:false,date:TODAY};
   save();drawAll();toast("🗑 Deleted")};
 drawAll();save();
 </script>
